@@ -27,6 +27,16 @@ cd $env:USERPROFILE\claude-alt-windows
 .\claude-alt.cmd new personal 00362e
 ```
 
+Without git, download the ZIP and unpack it into a folder you'll keep:
+
+```powershell
+Invoke-WebRequest https://github.com/vincenzodivincenzo/claude-alt-windows/archive/refs/heads/main.zip -OutFile $env:TEMP\claude-alt.zip
+Expand-Archive $env:TEMP\claude-alt.zip $env:USERPROFILE -Force
+& "$env:USERPROFILE\claude-alt-windows-main\claude-alt.cmd" new personal 00362e
+```
+
+Keep the folder: the Start-menu entries don't depend on it, but `refresh`, `doctor` and `remove` run from it.
+
 `claude-alt.cmd` runs the script with `-ExecutionPolicy Bypass`, so you don't need to change the machine's execution policy. To call it from anywhere, add the folder to your user `PATH`.
 
 Then open **Start → Claude Personal** and sign in with **email → code**. See trap 1 for why Google sign-in doesn't work here.
