@@ -1,0 +1,14 @@
+name: windows-smoke
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  smoke:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Smoke test (Windows PowerShell 5.1, fake Claude.exe)
+        shell: powershell
+        run: .\test\smoke.ps1
