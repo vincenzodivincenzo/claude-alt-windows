@@ -244,7 +244,7 @@ function Cmd-Run {
 function Cmd-List {
     Build-Tools
     $exe = Resolve-ClaudeExe
-    $procs = Get-ClaudeProcs
+    $procs = @(Get-ClaudeProcs)
     $mainUp = @($procs | Where-Object { (Is-Browser $_) -and $_.CommandLine -notmatch '--user-data-dir' }).Count -gt 0
     Write-Host ("original  Claude {0}  {1}" -f (Get-ClaudeVersion $exe), $(if ($mainUp) { '[running]' } else { '' }))
     Write-Host "          exe     $exe"
@@ -254,7 +254,7 @@ function Cmd-List {
         $up = @($procs | Where-Object { (Is-Browser $_) -and (Test-ProfileArg $_.CommandLine (ProfileOf $n)) }).Count -gt 0
         $flag = if (-not (Test-Path (LnkOf $n))) { '  << NO SHORTCUT (claude-alt refresh)' } else { '' }
         Write-Host ("{0,-9} Claude {1}  #{2}  {3}{4}" -f $n, (Pretty $n), $ini['color'], $(if ($up) { '[running]' } else { '' }), $flag)
-        $dirs = Get-ProfileDirs $n
+        $dirs = @(Get-ProfileDirs $n)
         if ($dirs.Count -eq 0) { $dirs = @((ProfileOf $n) + ' (not created yet)') }
         foreach ($d in $dirs) { Write-Host "          profile $d" }
     }
@@ -264,7 +264,7 @@ function Cmd-Refresh {
     Build-Tools -Rebuild
     $exe = Resolve-ClaudeExe -Refresh
     Write-Host "  Claude $(Get-ClaudeVersion $exe): $exe"
-    $names = if ($Name) { @(Check-Name $Name) } else { Get-CloneNames }
+    $names = @(if ($Name) { Check-Name $Name } else { Get-CloneNames })
     foreach ($n in $names) {
         if (-not (Test-Path (CloneDir $n))) { Die "no clone '$n'" }
         Write-Host "refreshing Claude $(Pretty $n) ..."
@@ -286,7 +286,7 @@ function Cmd-Remove {
     }
     Remove-Item (CloneDir $n) -Recurse -Force
 
-    $dirs = Get-ProfileDirs $n
+    $dirs = @(Get-ProfileDirs $n)
     if (-not $RemoveData) {
         foreach ($d in $dirs) { Write-Host "  kept account data: $d  (claude-alt new $n <hex> reuses it)" }
         return
@@ -314,11 +314,11 @@ function Cmd-Doctor {
     Ok "Claude $(Get-ClaudeVersion $exe): $exe"
     if ($exe -like '*\WindowsApps\*') { Info 'MSIX install: Claude updates itself; clones follow on their next launch' }
 
-    $procs = Get-ClaudeProcs
+    $procs = @(Get-ClaudeProcs)
     $mainUp = @($procs | Where-Object { (Is-Browser $_) -and $_.CommandLine -notmatch '--user-data-dir' }).Count -gt 0
     $shell = New-Object -ComObject WScript.Shell
 
-    $names = if ($Name) { @(Check-Name $Name) } else { Get-CloneNames }
+    $names = @(if ($Name) { Check-Name $Name } else { Get-CloneNames })
     if ($names.Count -eq 0) { Info 'no clones yet (claude-alt new <name> <hex>)' }
     foreach ($n in $names) {
         Write-Host "Claude $(Pretty $n)"
@@ -344,7 +344,7 @@ function Cmd-Doctor {
         $browsers = @($procs | Where-Object { (Is-Browser $_) -and (Test-ProfileArg $_.CommandLine $profileDir) })
         if ($browsers.Count -eq 0) {
             Info 'not running: start it and re-run doctor to check profile routing and the taskbar'
-            $dirs = Get-ProfileDirs $n
+            $dirs = @(Get-ProfileDirs $n)
             if (@($dirs | Where-Object { Has-Storage $_ }).Count -gt 0) { Ok "profile has data: $($dirs -join ', ')" }
             continue
         }
@@ -359,7 +359,7 @@ function Cmd-Doctor {
         elseif ($stray.Count -eq 0) { Ok "all $($kids.Count) helper processes carry the profile" }
         else { Warn "$($stray.Count) of $($kids.Count) helpers do not name the profile; check that chats land in $profileDir" }
 
-        $dirs = Get-ProfileDirs $n
+        $dirs = @(Get-ProfileDirs $n)
         $withData = @($dirs | Where-Object { Has-Storage $_ })
         $age = ((Get-Date) - ($browsers | Sort-Object CreationDate | Select-Object -First 1).CreationDate).TotalSeconds
         if ($withData.Count -gt 0) { Ok "browser storage written to $($withData -join ', ')" }

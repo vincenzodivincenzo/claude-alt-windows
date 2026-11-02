@@ -81,6 +81,9 @@ $probe = Native $tool @('probe', '--profile', $prof)
 $probe | ForEach-Object { Write-Host "    $_" }
 Check (@($probe | Where-Object { $_ -like 'pid*' }).Count -ge 1) 'probe finds the clone process'
 Check (@($probe | Where-Object { $_ -like "window*`tlocal.claudesmoke`t*" }).Count -ge 1) 'window tagged with the clone AppUserModelID'
+Get-CimInstance Win32_Process -Filter "Name = 'claude-alt-launcher.exe'" | ForEach-Object { Write-Host "    watcher pid $($_.ProcessId): $($_.CommandLine)" }
+$log = Join-Path $env:LOCALAPPDATA 'claude-alt\launcher.log'
+if (Test-Path $log) { Get-Content $log | ForEach-Object { Write-Host "    log: $_" } }
 
 # 6. doctor and list
 & $ca list
