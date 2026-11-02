@@ -40,7 +40,7 @@ static class ClaudeAlt
             switch (cmd)
             {
                 case "launch":
-                    return Launch(Req(o, "profile"), Req(o, "aumid"), Opt(o, "name", "Claude"), Opt(o, "icon", null), extra);
+                    return Launch(Req(o, "profile"), Req(o, "aumid"), extra);
                 case "resolve-exe":
                     Console.WriteLine(ResolveClaudeExe(o.ContainsKey("refresh")));
                     return 0;
@@ -54,11 +54,9 @@ static class ClaudeAlt
                     return 0;
                 case "probe":
                     return Probe(Req(o, "profile"));
-                case "diag-tag":
-                    return DiagTag(Opt(o, "hwnd", null));
                 default:
                     Console.Error.WriteLine(
-                        "usage: launch --profile DIR --aumid ID [--name NAME] [--icon ICO] [-- ARGS...]\n" +
+                        "usage: launch --profile DIR --aumid ID [-- ARGS...]\n" +
                         "       resolve-exe [--refresh]\n" +
                         "       make-icon --source EXE|ICO|PNG --out ICO --hex RRGGBB\n" +
                         "       make-shortcut --lnk LNK --profile DIR --aumid ID --name NAME [--icon ICO]\n" +
@@ -80,7 +78,7 @@ static class ClaudeAlt
     // (one watcher per clone) tagging the clone's windows with the clone's
     // AppUserModelID, so the taskbar gives it its own button and icon instead
     // of grouping it under the main Claude.
-    static int Launch(string profile, string aumid, string display, string icon, List<string> extra)
+    static int Launch(string profile, string aumid, List<string> extra)
     {
         profile = Path.GetFullPath(profile).TrimEnd('\\');
         Directory.CreateDirectory(profile);
@@ -102,18 +100,15 @@ static class ClaudeAlt
         using (Mutex m = new Mutex(true, "Local\\claude-alt-watch-" + aumid, out owner))
         {
             if (!owner) return 0;   // a watcher for this clone is already running
-            string self = System.Reflection.Assembly.GetExecutingAssembly().Location;
-            string relaunch = Quote(self) + " launch --profile " + Quote(profile) + " --aumid " + Quote(aumid) +
-                              " --name " + Quote(display) + (icon != null ? " --icon " + Quote(icon) : "");
             // Claude is already up: a watcher failure only costs the taskbar
             // icon, so it is logged rather than shown.
-            try { Watch(profile, aumid, display, icon, relaunch); }
+            try { Watch(profile, aumid); }
             catch (Exception e) { Log("watcher stopped: " + e.Message); }
         }
         return 0;
     }
 
-    static void Watch(string profile, string aumid, string display, string icon, string relaunch)
+    static void Watch(string profile, string aumid)
     {
         HashSet<IntPtr> tagged = new HashSet<IntPtr>();
         DateTime start = DateTime.UtcNow;
@@ -130,24 +125,24 @@ static class ClaudeAlt
             {
                 misses = 0;
                 foreach (IntPtr h in TopWindows(pids, false))
-                    if (!tagged.Contains(h) && TagWindow(h, aumid, display, icon, relaunch)) tagged.Add(h);
+                    if (!tagged.Contains(h) && TagWindow(h, aumid)) tagged.Add(h);
                 tagged.RemoveWhere(delegate(IntPtr w) { return !IsWindow(w); });
             }
             Thread.Sleep(1500);
         }
     }
 
-    static bool TagWindow(IntPtr hwnd, string aumid, string display, string icon, string relaunch)
+    // Only the ID is set. Name, icon and pin/relaunch come from the Start-menu
+    // shortcut carrying the same ID. The relaunch properties would be
+    // redundant, and the window store rejects values that long
+    // (0x8007007A, seen in CI).
+    static bool TagWindow(IntPtr hwnd, string aumid)
     {
         IPropertyStore ps;
         Guid iid = typeof(IPropertyStore).GUID;
         if (SHGetPropertyStoreForWindow(hwnd, ref iid, out ps) != 0 || ps == null) return false;
         try
         {
-            // relaunch properties first: they only take effect alongside the ID
-            if (icon != null) SetString(ps, PKEY_RelaunchIconResource, icon + ",0");
-            SetString(ps, PKEY_RelaunchDisplayNameResource, display);
-            SetString(ps, PKEY_RelaunchCommand, relaunch);
             SetString(ps, PKEY_AppUserModelId, aumid);
             return true;
         }
@@ -434,8 +429,7 @@ static class ClaudeAlt
     {
         string launcher = Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location),
                                        "claude-alt-launcher.exe");
-        string args = "launch --profile " + Quote(profile.TrimEnd('\\')) + " --aumid " + Quote(aumid) +
-                      " --name " + Quote(display) + (icon != null ? " --icon " + Quote(icon) : "");
+        string args = "launch --profile " + Quote(profile.TrimEnd('\\')) + " --aumid " + Quote(aumid);
         IShellLinkW link = (IShellLinkW)new CShellLink();
         link.SetPath(launcher);
         link.SetArguments(args);
@@ -482,32 +476,6 @@ static class ClaudeAlt
             Console.WriteLine("window\t0x" + h.ToString("x") + "\t" + (string.IsNullOrEmpty(id) ? "-" : id) + "\t" + title);
         }
         return pids.Count > 0 ? 0 : 3;
-    }
-
-    // Temporary diagnostic: which AppUserModel keys a window store accepts,
-    // for a window of this process and (with --hwnd) another process's.
-    static int DiagTag(string hwndHex)
-    {
-        List<IntPtr> targets = new List<IntPtr>();
-        targets.Add(CreateWindowExW(0, "STATIC", "diag", 0, 0, 0, 10, 10, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero));
-        if (hwndHex != null) targets.Add(new IntPtr(Convert.ToInt64(hwndHex.Replace("0x", ""), 16)));
-        PropertyKey[] keys = { PKEY_AppUserModelId, PKEY_RelaunchCommand, PKEY_RelaunchDisplayNameResource, PKEY_RelaunchIconResource };
-        string[] names = { "ID", "RelaunchCommand", "RelaunchDisplayName", "RelaunchIcon" };
-        foreach (IntPtr h in targets)
-        {
-            IPropertyStore ps;
-            Guid iid = typeof(IPropertyStore).GUID;
-            int hr = SHGetPropertyStoreForWindow(h, ref iid, out ps);
-            Console.WriteLine("hwnd 0x" + h.ToString("x") + " store hr=0x" + hr.ToString("x"));
-            if (hr != 0) continue;
-            for (int i = 0; i < keys.Length; i++)
-            {
-                try { SetString(ps, keys[i], "diag.value"); Console.WriteLine("  set " + names[i] + " ok, read back " + GetString(ps, keys[i])); }
-                catch (Exception e) { Console.WriteLine("  set " + names[i] + " FAILED " + e.Message); }
-            }
-            Marshal.ReleaseComObject(ps);
-        }
-        return 0;
     }
 
     // --------------------------------------------------------------- helpers
@@ -577,9 +545,6 @@ static class ClaudeAlt
     // ----------------------------------------------------- property stores
 
     static readonly Guid AppUserModelFmtid = new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3");
-    static readonly PropertyKey PKEY_RelaunchCommand = new PropertyKey(AppUserModelFmtid, 2);
-    static readonly PropertyKey PKEY_RelaunchIconResource = new PropertyKey(AppUserModelFmtid, 3);
-    static readonly PropertyKey PKEY_RelaunchDisplayNameResource = new PropertyKey(AppUserModelFmtid, 4);
     static readonly PropertyKey PKEY_AppUserModelId = new PropertyKey(AppUserModelFmtid, 5);
 
     const ushort VT_LPWSTR = 31;
@@ -669,6 +634,4 @@ static class ClaudeAlt
     [DllImport("shell32.dll")]
     static extern int SHGetPropertyStoreForWindow(IntPtr hwnd, ref Guid iid, [MarshalAs(UnmanagedType.Interface)] out IPropertyStore ps);
     [DllImport("ole32.dll")] static extern int PropVariantClear(ref PropVariant pv);
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    static extern IntPtr CreateWindowExW(uint ex, string cls, string name, uint style, int x, int y, int w, int h, IntPtr parent, IntPtr menu, IntPtr inst, IntPtr param);
 }
