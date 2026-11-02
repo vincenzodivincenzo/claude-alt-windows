@@ -54,6 +54,8 @@ static class ClaudeAlt
                     return 0;
                 case "probe":
                     return Probe(Req(o, "profile"));
+                case "diag-tag":
+                    return DiagTag(Opt(o, "hwnd", null));
                 default:
                     Console.Error.WriteLine(
                         "usage: launch --profile DIR --aumid ID [--name NAME] [--icon ICO] [-- ARGS...]\n" +
@@ -482,6 +484,32 @@ static class ClaudeAlt
         return pids.Count > 0 ? 0 : 3;
     }
 
+    // Temporary diagnostic: which AppUserModel keys a window store accepts,
+    // for a window of this process and (with --hwnd) another process's.
+    static int DiagTag(string hwndHex)
+    {
+        List<IntPtr> targets = new List<IntPtr>();
+        targets.Add(CreateWindowExW(0, "STATIC", "diag", 0, 0, 0, 10, 10, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero));
+        if (hwndHex != null) targets.Add(new IntPtr(Convert.ToInt64(hwndHex.Replace("0x", ""), 16)));
+        PropertyKey[] keys = { PKEY_AppUserModelId, PKEY_RelaunchCommand, PKEY_RelaunchDisplayNameResource, PKEY_RelaunchIconResource };
+        string[] names = { "ID", "RelaunchCommand", "RelaunchDisplayName", "RelaunchIcon" };
+        foreach (IntPtr h in targets)
+        {
+            IPropertyStore ps;
+            Guid iid = typeof(IPropertyStore).GUID;
+            int hr = SHGetPropertyStoreForWindow(h, ref iid, out ps);
+            Console.WriteLine("hwnd 0x" + h.ToString("x") + " store hr=0x" + hr.ToString("x"));
+            if (hr != 0) continue;
+            for (int i = 0; i < keys.Length; i++)
+            {
+                try { SetString(ps, keys[i], "diag.value"); Console.WriteLine("  set " + names[i] + " ok, read back " + GetString(ps, keys[i])); }
+                catch (Exception e) { Console.WriteLine("  set " + names[i] + " FAILED " + e.Message); }
+            }
+            Marshal.ReleaseComObject(ps);
+        }
+        return 0;
+    }
+
     // --------------------------------------------------------------- helpers
 
     static void ParseArgs(string[] argv, out Dictionary<string, string> o, out List<string> extra)
@@ -641,4 +669,6 @@ static class ClaudeAlt
     [DllImport("shell32.dll")]
     static extern int SHGetPropertyStoreForWindow(IntPtr hwnd, ref Guid iid, [MarshalAs(UnmanagedType.Interface)] out IPropertyStore ps);
     [DllImport("ole32.dll")] static extern int PropVariantClear(ref PropVariant pv);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    static extern IntPtr CreateWindowExW(uint ex, string cls, string name, uint style, int x, int y, int w, int h, IntPtr parent, IntPtr menu, IntPtr inst, IntPtr param);
 }
