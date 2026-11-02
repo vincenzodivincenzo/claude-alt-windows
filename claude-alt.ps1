@@ -370,7 +370,7 @@ function Cmd-Doctor {
         $wins = @($probe | Where-Object { $_ -like "window`t*" })
         $untagged = @($wins | Where-Object { ($_ -split "`t")[2] -ne $aumid })
         if ($wins.Count -eq 0) { Info 'no visible windows' }
-        elseif ($untagged.Count -eq 0) { Ok "$($wins.Count) window(s) tagged $aumid: own taskbar button and icon" }
+        elseif ($untagged.Count -eq 0) { Ok "$($wins.Count) window(s) tagged ${aumid}: own taskbar button and icon" }
         else { Warn "$($untagged.Count) window(s) not tagged yet; they group under the main Claude on the taskbar" }
 
         $watch = @(Get-CimInstance Win32_Process -Filter "Name = 'claude-alt-launcher.exe'" |
